@@ -1,0 +1,288 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>RAG Visual Playground</title>
+
+<style>
+/* 🌈 General Styling */
+body {
+  font-family: 'Segoe UI', sans-serif;
+  margin: 0;
+  background: linear-gradient(135deg, #667eea, #764ba2);
+  color: #fff;
+}
+
+.container {
+  max-width: 1000px;
+  margin: auto;
+  padding: 20px;
+}
+
+h2 {
+  border-left: 5px solid #00ffcc;
+  padding-left: 10px;
+}
+
+/* 🧱 Card UI */
+.card {
+  background: rgba(255,255,255,0.1);
+  padding: 15px;
+  border-radius: 12px;
+  margin-bottom: 20px;
+  backdrop-filter: blur(10px);
+}
+
+/* Inputs */
+textarea, input {
+  width: 100%;
+  padding: 10px;
+  margin-top: 10px;
+  border-radius: 8px;
+  border: none;
+}
+
+/* Buttons */
+button {
+  margin-top: 10px;
+  padding: 10px 15px;
+  border: none;
+  border-radius: 8px;
+  background: #00ffcc;
+  color: #000;
+  font-weight: bold;
+  cursor: pointer;
+}
+
+button:hover {
+  background: #00ccaa;
+}
+
+/* Chips */
+.chunk, .vector {
+  background: rgba(0,0,0,0.3);
+  padding: 8px;
+  margin: 5px 0;
+  border-radius: 8px;
+  font-size: 14px;
+}
+
+/* Progress */
+.progress {
+  margin-top: 10px;
+  font-size: 13px;
+  color: #00ffcc;
+}
+
+/* Highlight */
+.highlight {
+  border: 2px solid #00ffcc;
+}
+
+/* Result */
+.result {
+  background: #111;
+  padding: 10px;
+  border-radius: 8px;
+}
+</style>
+</head>
+
+<body>
+<div class="container">
+
+<h1>🧠 RAG Visual Learning Tool</h1>
+
+<!-- 1. Chunking -->
+<div class="card">
+<h2>1. Input Text & Chunk</h2>
+
+<textarea id="inputText" rows="4" placeholder="Enter your text..."></textarea>
+
+<label>Chunk Size:</label>
+<input type="number" id="chunkSize" value="20">
+
+<label>Sliding Window:</label>
+<input type="number" id="overlap" value="5">
+
+<button onclick="chunkText()">Chunk Text</button>
+
+<div class="progress" id="chunkProgress"></div>
+<div id="chunks"></div>
+</div>
+
+<!-- 2. Embeddings -->
+<div class="card">
+<h2>2. Create Embeddings</h2>
+<button onclick="createEmbeddings()">Create Vector Embeddings</button>
+<div class="progress" id="embedProgress"></div>
+<div id="vectors"></div>
+</div>
+
+<!-- 3. Save -->
+<div class="card">
+<h2>3. Save Vectors</h2>
+<button onclick="saveVectors()">Save to Local Storage</button>
+<div class="progress" id="saveProgress"></div>
+</div>
+
+<!-- 4. Query -->
+<div class="card">
+<h2>4. Query</h2>
+
+<input id="query" placeholder="Ask something...">
+
+<label>Top N Results:</label>
+<input type="number" id="topN" value="2">
+
+<button onclick="ask()">Ask</button>
+
+<div class="progress" id="queryProgress"></div>
+<div id="results"></div>
+</div>
+
+<!-- 6. Prompt -->
+<div class="card">
+<h2>5. Prompt Construction</h2>
+<div id="promptBox" class="result"></div>
+</div>
+
+<!-- 7. Answer -->
+<div class="card">
+<h2>6. LLM Answer</h2>
+<div id="answer" class="result"></div>
+</div>
+
+</div>
+
+<script>
+// Global state
+let chunks = [];
+let vectors = [];
+
+/* ✂️ Step 1: Chunk Text */
+function chunkText() {
+  const text = document.getElementById("inputText").value.split(" ");
+  const size = parseInt(document.getElementById("chunkSize").value);
+  const overlap = parseInt(document.getElementById("overlap").value);
+
+  chunks = [];
+  for (let i = 0; i < text.length; i += (size - overlap)) {
+    chunks.push(text.slice(i, i + size).join(" "));
+  }
+
+  const chunkDiv = document.getElementById("chunks");
+  chunkDiv.innerHTML = "";
+
+  chunks.forEach((c, i) => {
+    chunkDiv.innerHTML += `<div class="chunk">Chunk ${i}: ${c}</div>`;
+  });
+
+  document.getElementById("chunkProgress").innerText =
+    `✅ Created ${chunks.length} chunks`;
+}
+
+/* 🔢 Step 2: Fake Embeddings */
+function fakeEmbedding(text) {
+  // Simple hash-based embedding (just for demo)
+  return text.split("").map(c => c.charCodeAt(0) % 50);
+}
+
+function createEmbeddings() {
+  vectors = chunks.map(c => ({
+    text: c,
+    embedding: fakeEmbedding(c)
+  }));
+
+  const vecDiv = document.getElementById("vectors");
+  vecDiv.innerHTML = "";
+
+  vectors.forEach((v, i) => {
+    vecDiv.innerHTML += `
+      <div class="vector">
+        Chunk ${i} → [${v.embedding.slice(0,10).join(", ")}...]
+      </div>`;
+  });
+
+  document.getElementById("embedProgress").innerText =
+    `✅ Created ${vectors.length} embeddings`;
+}
+
+/* 💾 Step 3: Save */
+function saveVectors() {
+  localStorage.setItem("rag_vectors", JSON.stringify(vectors));
+  document.getElementById("saveProgress").innerText =
+    "✅ Saved to local storage";
+}
+
+/* 📐 Cosine Similarity */
+function cosine(a, b) {
+  let dot = 0, magA = 0, magB = 0;
+
+  for (let i = 0; i < Math.min(a.length, b.length); i++) {
+    dot += a[i] * b[i];
+    magA += a[i] * a[i];
+    magB += b[i] * b[i];
+  }
+
+  return dot / (Math.sqrt(magA) * Math.sqrt(magB) + 1e-9);
+}
+
+/* ❓ Step 4–7: Query → Retrieve → Prompt → Answer */
+function ask() {
+  const query = document.getElementById("query").value;
+  const topN = parseInt(document.getElementById("topN").value);
+
+  const stored = JSON.parse(localStorage.getItem("rag_vectors") || "[]");
+
+  const queryVec = fakeEmbedding(query);
+
+  // Compute similarity
+  const scored = stored.map(v => ({
+    text: v.text,
+    score: cosine(queryVec, v.embedding)
+  }));
+
+  scored.sort((a,b) => b.score - a.score);
+
+  const topChunks = scored.slice(0, topN);
+
+  // Show results
+  const resDiv = document.getElementById("results");
+  resDiv.innerHTML = "";
+
+  topChunks.forEach(r => {
+    resDiv.innerHTML += `
+      <div class="chunk highlight">
+        Score: ${r.score.toFixed(3)} <br>${r.text}
+      </div>`;
+  });
+
+  document.getElementById("queryProgress").innerText =
+    `✅ Retrieved top ${topN} chunks`;
+
+  /* 🧾 Step 6: Prompt */
+  const context = topChunks.map(c => c.text).join("\n");
+
+  const prompt = `
+Answer the user's query based on context.
+
+User Query:
+"${query}"
+
+Context:
+${context}
+`;
+
+  document.getElementById("promptBox").innerText = prompt;
+
+  /* 🤖 Step 7: Fake LLM */
+  const answer = `🤖 Simulated Answer:
+Based on the context, the answer to "${query}" is likely related to the retrieved chunks.`;
+
+  document.getElementById("answer").innerText = answer;
+}
+</script>
+
+</body>
+</html>
